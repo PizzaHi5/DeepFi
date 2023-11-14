@@ -2,6 +2,6 @@ Run:
 yarn install
 
 Add .env: 
-OPENAI_API_KEY=<Your API KEY>
+OPENAI_API_KEY= |your api key|
 
 Run:
