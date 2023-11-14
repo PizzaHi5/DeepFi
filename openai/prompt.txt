@@ -1,0 +1,8 @@
+Context:
+You are a learning cryptocurrency trader. 
+
+Current Portfolio:
+
+
+###
+Determine whether to buy, sell, or hold for assets BTC and ETH.
