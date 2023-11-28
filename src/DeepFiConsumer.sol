@@ -4,11 +4,14 @@ pragma solidity ^0.8.19;
 import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
+import {ISwapRouter} from '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
+import {TransferHelper} from '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import {DeepVariables} from "./interfaces/DeepVariables.sol";
 
 /**
  * @title Chainlink Functions example on-demand consumer contract example
  */
-contract DeepFiConsumer is FunctionsClient, ConfirmedOwner {
+contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
   using FunctionsRequest for FunctionsRequest.Request;
 
   bytes32 public donId; // DON ID for the Functions DON to which the requests are sent
@@ -17,8 +20,13 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner {
   bytes public s_lastResponse;
   bytes public s_lastError;
 
-  constructor(address router, bytes32 _donId) FunctionsClient(router) ConfirmedOwner(msg.sender) {
+  ISwapRouter public immutable swapRouter;
+  uint24 public constant poolFee = 3000;
+
+
+  constructor(address router, bytes32 _donId, address _swapRouter) FunctionsClient(router) ConfirmedOwner(msg.sender) {
     donId = _donId;
+    swapRouter = ISwapRouter(_swapRouter);
   }
 
   /**
@@ -71,5 +79,39 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner {
   function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal override {
     s_lastResponse = response;
     s_lastError = err;
+
+    parseResponse(response);
+  }
+
+  //parse 32 bytes into uniswap actions
+  function parseResponse(bytes memory response) returns (ISwapRouter.ExactInputParams) {
+    (bool isMakingSwap, uint16 tokenIn, uint16 tokenOut, uint96 amountIn) = abi.decode(respose);
+
+    //parse tokenIn into token address
+    //parse tokenOut into token address
+
+    if(IsMakingSwap) {
+      return ISwapRouter.ExactInputSingleParams({
+        tokenIn: tokenIn,
+        tokenOut: tokenOut,
+        fee: poolFee,
+        recipient: msg.sender,
+        deadline: block.timestamp,
+        amountIn: amountIn,
+        amountOutMinimum: 0,
+        sqrtPriceLimitX96: 0
+      });
+    }
+  }
+
+  function executeResponse(ISwapRouter.ExactInputParams calldata params) {
+    //buy eth
+
+    //buy matic
+
+    //buy link
+
+    //buy usd
+
   }
 }
