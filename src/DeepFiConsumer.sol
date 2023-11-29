@@ -20,13 +20,9 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
   bytes public s_lastResponse;
   bytes public s_lastError;
 
-  ISwapRouter public immutable swapRouter;
-  uint24 public constant poolFee = 3000;
-
-
-  constructor(address router, bytes32 _donId, address _swapRouter) FunctionsClient(router) ConfirmedOwner(msg.sender) {
+  constructor(address router, bytes32 _donId, ISwapRouter _swapRouter) 
+    FunctionsClient(router) ConfirmedOwner(msg.sender) DeepVariables(_swapRouter) {
     donId = _donId;
-    swapRouter = ISwapRouter(_swapRouter);
   }
 
   /**
@@ -84,14 +80,15 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
   }
 
   //parse 32 bytes into uniswap actions
-  function parseResponse(bytes memory response) returns (ISwapRouter.ExactInputParams) {
-    (bool isMakingSwap, uint16 tokenIn, uint16 tokenOut, uint96 amountIn) = abi.decode(respose);
+  function parseResponse(bytes memory response) internal view returns (ISwapRouter.ExactInputSingleParams memory params) {
+    //Change addresses into compressed data types
+    (bool isMakingSwap, address tokenIn, address tokenOut, uint96 amountIn) = abi.decode(response, (bool,address,address,uint96));
 
     //parse tokenIn into token address
     //parse tokenOut into token address
 
-    if(IsMakingSwap) {
-      return ISwapRouter.ExactInputSingleParams({
+    if(isMakingSwap) {
+      params = ISwapRouter.ExactInputSingleParams({
         tokenIn: tokenIn,
         tokenOut: tokenOut,
         fee: poolFee,
@@ -104,7 +101,7 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
     }
   }
 
-  function executeResponse(ISwapRouter.ExactInputParams calldata params) {
+  function executeResponse(ISwapRouter.ExactInputSingleParams calldata params) internal {
     //buy eth
 
     //buy matic
