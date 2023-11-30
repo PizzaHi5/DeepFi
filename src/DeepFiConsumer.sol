@@ -81,11 +81,14 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
 
   //parse 32 bytes into uniswap actions
   function parseResponse(bytes memory response) internal view returns (ISwapRouter.ExactInputSingleParams memory params) {
-    //Change addresses into compressed data types
+    //Change addresses/uint96 into compressed data types
     (bool isMakingSwap, address tokenIn, address tokenOut, uint96 amountIn) = abi.decode(response, (bool,address,address,uint96));
 
     //parse tokenIn into token address
     //parse tokenOut into token address
+
+    //fetch price from appropriate feed (list in DeepVariables)
+    (,int256 price,,,) = linkMaticFeed.latestRoundData();
 
     if(isMakingSwap) {
       params = ISwapRouter.ExactInputSingleParams({
@@ -95,7 +98,7 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
         recipient: msg.sender,
         deadline: block.timestamp,
         amountIn: amountIn,
-        amountOutMinimum: 0,
+        amountOutMinimum: uint256(price),
         sqrtPriceLimitX96: 0
       });
     }
