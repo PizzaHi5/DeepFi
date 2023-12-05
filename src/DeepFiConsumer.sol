@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {FunctionsClient} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/FunctionsClient.sol";
+import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/ConfirmedOwner.sol";
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 import {ISwapRouter} from '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
@@ -11,7 +12,7 @@ import {DeepVariables} from "./interfaces/DeepVariables.sol";
 /**
  * @title Chainlink Functions example on-demand consumer contract example
  */
-contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
+contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, ConfirmedOwner, DeepVariables {
   using FunctionsRequest for FunctionsRequest.Request;
 
   bytes32 public donId; // DON ID for the Functions DON to which the requests are sent
@@ -19,6 +20,11 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
   bytes32 public s_lastRequestId;
   bytes public s_lastResponse;
   bytes public s_lastError;
+
+  uint256 public immutable interval;
+  uint256 public lastTimeStamp;
+  string private sourceScript;
+  bytes private encryptedSecretsRef;
 
   constructor(address router, bytes32 _donId, ISwapRouter _swapRouter) 
     FunctionsClient(router) ConfirmedOwner(msg.sender) DeepVariables(_swapRouter) {
@@ -31,6 +37,11 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
    */
   function setDonId(bytes32 newDonId) external onlyOwner {
     donId = newDonId;
+  }
+
+  function setSourceRef(string calldata _source, bytes calldata encryptedSecRef) external onlyOwner {
+    sourceScript = _source;
+    encryptedSecretsRef = encryptedSecRef;
   }
 
   /**
@@ -76,7 +87,7 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
     s_lastResponse = response;
     s_lastError = err;
 
-    parseResponse(response);
+    executeResponse(parseResponse(response));
   }
 
   //parse 32 bytes into uniswap actions
@@ -104,7 +115,7 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
     }
   }
 
-  function executeResponse(ISwapRouter.ExactInputSingleParams calldata params) internal {
+  function executeResponse(ISwapRouter.ExactInputSingleParams memory params) internal {
     //buy eth
 
     //buy matic
@@ -113,5 +124,46 @@ contract DeepFiConsumer is FunctionsClient, ConfirmedOwner, DeepVariables {
 
     //buy usd
 
+  }
+
+  function checkUpkeep(
+        bytes calldata /* checkData */
+    )
+      external
+      view
+      override
+      returns (bool upkeepNeeded, bytes memory /* performData */)
+  {
+    upkeepNeeded = (block.timestamp - lastTimeStamp) > interval;
+  }
+
+  function performUpkeep(bytes calldata /* performData */) external override {
+      if ((block.timestamp - lastTimeStamp) > interval) {
+        lastTimeStamp = block.timestamp;
+        __sendRequest(getScript(), FunctionsRequest.Location.DONHosted, getSecRef(), 1001, 300000);
+      }
+  }
+
+  function __sendRequest(
+    string memory source,
+    FunctionsRequest.Location secretsLocation,
+    bytes memory encryptedSecretsReference,
+    uint64 subscriptionId,
+    uint32 callbackGasLimit
+  ) internal onlyOwner {
+    FunctionsRequest.Request memory req; // Struct API reference: https://docs.chain.link/chainlink-functions/api-reference/functions-request
+    req.initializeRequest(FunctionsRequest.Location.Inline, FunctionsRequest.CodeLanguage.JavaScript, source);
+    req.secretsLocation = secretsLocation;
+    req.encryptedSecretsReference = encryptedSecretsReference;
+
+    s_lastRequestId = _sendRequest(req.encodeCBOR(), subscriptionId, callbackGasLimit, donId);
+  }
+
+  function getScript() public view returns (string memory) {
+    return sourceScript;
+  }
+
+  function getSecRef() public view returns (bytes memory) {
+    return encryptedSecretsRef;
   }
 }
