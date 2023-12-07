@@ -23,8 +23,10 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
 
   uint256 public immutable interval;
   uint256 public lastTimeStamp;
+
   string private sourceScript;
   bytes private encryptedSecretsRef;
+  string private arg; //args must be known in advance, cannot do dynamic string arrays in storage
 
   constructor(address router, bytes32 _donId, ISwapRouter _swapRouter) 
     FunctionsClient(router) ConfirmedOwner(msg.sender) DeepVariables(_swapRouter) {
@@ -39,9 +41,10 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
     donId = newDonId;
   }
 
-  function setSourceRef(string calldata _source, bytes calldata encryptedSecRef) external onlyOwner {
+  function setSourceRefs(string calldata _source, bytes calldata encryptedSecRef, string calldata _arg) external onlyOwner {
     sourceScript = _source;
     encryptedSecretsRef = encryptedSecRef;
+    arg = _arg;
   }
 
   /**
@@ -87,7 +90,10 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
     s_lastResponse = response;
     s_lastError = err;
 
-    executeResponse(parseResponse(response));
+    //Do not execute if response is "no_signal"
+    if(keccak256(abi.encode(response)) != keccak256(abi.encode(0x6e6f5f7369676e616c))) {
+      executeResponse(parseResponse(response));
+    }
   }
 
   //parse 32 bytes into uniswap actions
@@ -117,7 +123,7 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
 
   function executeResponse(ISwapRouter.ExactInputSingleParams memory params) internal {
     //buy eth
-
+    
     //buy matic
 
     //buy link
@@ -138,16 +144,25 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   }
 
   function performUpkeep(bytes calldata /* performData */) external override {
-      if ((block.timestamp - lastTimeStamp) > interval) {
-        lastTimeStamp = block.timestamp;
-        __sendRequest(getScript(), FunctionsRequest.Location.DONHosted, getSecRef(), 1001, 300000);
-      }
+    if ((block.timestamp - lastTimeStamp) > interval) {
+      lastTimeStamp = block.timestamp;
+      __sendRequest(
+        sourceScript, 
+        FunctionsRequest.Location.DONHosted, 
+        encryptedSecretsRef,
+        arg,
+        1001, 
+        300000
+      );
+    }
   }
 
+  //does not have string args or bytes args
   function __sendRequest(
-    string memory source,
+    string storage source,
     FunctionsRequest.Location secretsLocation,
-    bytes memory encryptedSecretsReference,
+    bytes storage encryptedSecretsReference,
+    string storage argIn,
     uint64 subscriptionId,
     uint32 callbackGasLimit
   ) internal onlyOwner {
@@ -156,14 +171,13 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
     req.secretsLocation = secretsLocation;
     req.encryptedSecretsReference = encryptedSecretsReference;
 
+    bytes memory str = bytes(argIn);
+    if(str.length != 0) {
+      string[] memory argarr;
+      argarr[0] = argIn;
+      req.setArgs(argarr);
+    }
+
     s_lastRequestId = _sendRequest(req.encodeCBOR(), subscriptionId, callbackGasLimit, donId);
-  }
-
-  function getScript() public view returns (string memory) {
-    return sourceScript;
-  }
-
-  function getSecRef() public view returns (bytes memory) {
-    return encryptedSecretsRef;
   }
 }
