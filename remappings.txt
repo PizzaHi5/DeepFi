@@ -8,4 +8,5 @@ forge-gas-snapshot/=lib/v4-periphery/lib/forge-gas-snapshot/src/
 forge-std/=lib/forge-std/src/
 
 lib/forge-std:ds-test/=lib/forge-std/lib/ds-test/src/
+@openzeppelin/openzeppelin-contracts/=lib/openzeppelin-contracts/
 @openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/

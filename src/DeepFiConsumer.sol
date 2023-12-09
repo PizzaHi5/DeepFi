@@ -7,6 +7,7 @@ import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/shared/access/Confir
 import {FunctionsRequest} from "@chainlink/contracts/src/v0.8/functions/v1_0_0/libraries/FunctionsRequest.sol";
 import {ISwapRouter} from '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import {TransferHelper} from '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import {IERC20} from "@openzeppelin/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {DeepVariables} from "./interfaces/DeepVariables.sol";
 
 /**
@@ -27,6 +28,8 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   string private sourceScript;
   bytes private encryptedSecretsRef;
   string private arg; //args must be known in advance, cannot do dynamic string arrays in storage
+  bytes private s_exit1;
+  bytes private s_exit2;
 
   constructor(address router, bytes32 _donId, ISwapRouter _swapRouter) 
     FunctionsClient(router) ConfirmedOwner(msg.sender) DeepVariables(_swapRouter) {
@@ -45,6 +48,11 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
     sourceScript = _source;
     encryptedSecretsRef = encryptedSecRef;
     arg = _arg;
+  }
+
+  function setExits(bytes calldata exit1, bytes calldata exit2) external onlyOwner {
+    s_exit1 = exit1;
+    s_exit2 = exit2;
   }
 
   /**
@@ -90,31 +98,49 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
     s_lastResponse = response;
     s_lastError = err;
 
-    //Do not execute if response is "no_signal"
-    if(keccak256(abi.encode(response)) != keccak256(abi.encode(0x6e6f5f7369676e616c))) {
-      executeResponse(parseResponse(response));
+    bytes32 hashedResponse = keccak256(abi.encodePacked(response));
+    //buy WETH if response is "swing_short_entry " or "range_short_entry"
+    if(hashedResponse != keccak256(abi.encodePacked(s_exit1)) &&
+       hashedResponse != keccak256(abi.encodePacked(s_exit2))
+    ) {
+      //buying WETH with USDC
+      executeResponse(parseResponse(response, true));
+    } else {
+      //selling WETH for USDC
+      executeResponse(parseResponse(response, false));
     }
   }
 
-  //parse 32 bytes into uniswap actions
-  function parseResponse(bytes memory response) internal view returns (ISwapRouter.ExactInputSingleParams memory params) {
-    //Change addresses/uint96 into compressed data types
-    (bool isMakingSwap, address tokenIn, address tokenOut, uint96 amountIn) = abi.decode(response, (bool,address,address,uint96));
-
-    //parse tokenIn into token address
-    //parse tokenOut into token address
-
+  //parse 32 bytes into uniswap action(s)
+  function parseResponse(bytes memory response, bool isBuyingEth) internal returns (ISwapRouter.ExactInputSingleParams memory params) {
     //fetch price from appropriate feed (list in DeepVariables)
-    (,int256 price,,,) = linkMaticFeed.latestRoundData();
+    (,int256 price,,,) = ethUsdFeed.latestRoundData();
 
-    if(isMakingSwap) {
+    if(isBuyingEth) {
+      //buying WETH
+      uint256 balance = IERC20(USDC).balanceOf(address(this));
+      IERC20(USDC).approve(address(swapRouter), balance);
       params = ISwapRouter.ExactInputSingleParams({
-        tokenIn: tokenIn,
-        tokenOut: tokenOut,
+        tokenIn: USDC,
+        tokenOut: WETH,
         fee: poolFee,
         recipient: msg.sender,
         deadline: block.timestamp,
-        amountIn: amountIn,
+        amountIn: balance,
+        amountOutMinimum: uint256(price),
+        sqrtPriceLimitX96: 0
+      });
+    } else {
+      //selling WETH
+      uint256 balance = IERC20(WETH).balanceOf(address(this));
+      IERC20(WETH).approve(address(swapRouter), balance);
+      params = ISwapRouter.ExactInputSingleParams({
+        tokenIn: WETH,
+        tokenOut: USDC,
+        fee: poolFee,
+        recipient: msg.sender,
+        deadline: block.timestamp,
+        amountIn: balance,
         amountOutMinimum: uint256(price),
         sqrtPriceLimitX96: 0
       });
@@ -122,14 +148,7 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   }
 
   function executeResponse(ISwapRouter.ExactInputSingleParams memory params) internal {
-    //buy eth
-    
-    //buy matic
-
-    //buy link
-
-    //buy usd
-
+    swapRouter.exactInputSingle(params);
   }
 
   function checkUpkeep(
@@ -180,4 +199,6 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
 
     s_lastRequestId = _sendRequest(req.encodeCBOR(), subscriptionId, callbackGasLimit, donId);
   }
+
+  receive() external payable {}
 }
