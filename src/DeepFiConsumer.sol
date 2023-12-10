@@ -16,6 +16,9 @@ import {DeepVariables} from "./interfaces/DeepVariables.sol";
 contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, ConfirmedOwner, DeepVariables {
   using FunctionsRequest for FunctionsRequest.Request;
 
+  event StringCheck(string[] diditwork);
+  event Action(bool isBuying);
+
   bytes32 public donId; // DON ID for the Functions DON to which the requests are sent
 
   bytes32 public s_lastRequestId;
@@ -30,6 +33,8 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   string private arg; //args must be known in advance, cannot do dynamic string arrays in storage
   bytes private s_exit1;
   bytes private s_exit2;
+
+  uint256 s_lastSwappedAmount;
 
   constructor(address router, bytes32 _donId, ISwapRouter _swapRouter) 
     FunctionsClient(router) ConfirmedOwner(msg.sender) DeepVariables(_swapRouter) {
@@ -97,18 +102,29 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   function fulfillRequest(bytes32 requestId, bytes memory response, bytes memory err) internal override {
     s_lastResponse = response;
     s_lastError = err;
-
-    bytes32 hashedResponse = keccak256(abi.encodePacked(response));
+    bytes memory exit1 = "0x72616e67655f73686f72745f656e747279";
+    bytes memory exit2 = "0x7377696e675f73686f72745f656e747279";
     //buy WETH if response is "swing_short_entry " or "range_short_entry"
-    if(hashedResponse != keccak256(abi.encodePacked(s_exit1)) &&
-       hashedResponse != keccak256(abi.encodePacked(s_exit2))
+    if(comapreBytes(response, exit1) &&
+       comapreBytes(response, exit2)
     ) {
       //buying WETH with USDC
+      emit Action(true);
       executeResponse(parseResponse(response, true));
     } else {
       //selling WETH for USDC
+      emit Action(false);
       executeResponse(parseResponse(response, false));
     }
+  }
+
+  function comapreBytes(bytes memory a, bytes memory b) public pure returns (bool) {
+    for (uint i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+          return false;
+      }
+    }
+    return true;
   }
 
   //parse 32 bytes into uniswap action(s)
@@ -148,7 +164,7 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   }
 
   function executeResponse(ISwapRouter.ExactInputSingleParams memory params) internal {
-    swapRouter.exactInputSingle(params);
+    s_lastSwappedAmount = swapRouter.exactInputSingle(params);
   }
 
   function checkUpkeep(
@@ -163,42 +179,48 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   }
 
   function performUpkeep(bytes calldata /* performData */) external override {
-    if ((block.timestamp - lastTimeStamp) > interval) {
-      lastTimeStamp = block.timestamp;
-      __sendRequest(
-        sourceScript, 
-        FunctionsRequest.Location.DONHosted, 
-        encryptedSecretsRef,
-        arg,
-        1001, 
-        300000
-      );
-    }
+    // if ((block.timestamp - lastTimeStamp) > interval) {
+    //   lastTimeStamp = block.timestamp;
+    //   __sendRequest(
+    //     sourceScript, 
+    //     FunctionsRequest.Location.DONHosted, 
+    //     encryptedSecretsRef,
+    //     arg,
+    //     1001, 
+    //     300000
+    //   );
+    // }
+  }
+
+  function updateConsumer(bytes calldata source) external {
+    __sendRequest(
+      string(source), 
+      1001, 
+      300000
+    );
   }
 
   //does not have string args or bytes args
   function __sendRequest(
-    string storage source,
-    FunctionsRequest.Location secretsLocation,
-    bytes storage encryptedSecretsReference,
-    string storage argIn,
+    string calldata source,
     uint64 subscriptionId,
     uint32 callbackGasLimit
   ) internal onlyOwner {
     FunctionsRequest.Request memory req; // Struct API reference: https://docs.chain.link/chainlink-functions/api-reference/functions-request
     req.initializeRequest(FunctionsRequest.Location.Inline, FunctionsRequest.CodeLanguage.JavaScript, source);
-    req.secretsLocation = secretsLocation;
-    req.encryptedSecretsReference = encryptedSecretsReference;
+    req.secretsLocation = FunctionsRequest.Location.Inline;
+    //req.encryptedSecretsReference = encryptedSecretsReference;
 
-    bytes memory str = bytes(argIn);
-    if(str.length != 0) {
-      string[] memory argarr;
-      argarr[0] = argIn;
-      req.setArgs(argarr);
-    }
+    // bytes memory str = bytes(argIn);
+    // if(str.length != 0) {
+    //   string[] memory myArray = new string[](1); 
+    //   myArray[0] = argIn;
+    //   req.setArgs(myArray);
+    //   emit StringCheck(myArray);
+    // }
 
     s_lastRequestId = _sendRequest(req.encodeCBOR(), subscriptionId, callbackGasLimit, donId);
-  }
+ }
 
   receive() external payable {}
 }
