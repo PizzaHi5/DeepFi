@@ -105,7 +105,7 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
     bytes memory exit1 = "0x72616e67655f73686f72745f656e747279";
     bytes memory exit2 = "0x7377696e675f73686f72745f656e747279";
     //buy WETH if response is "swing_short_entry " or "range_short_entry"
-    if(comapreBytes(response, exit1) &&
+    if(comapreBytes(response, exit1) ||
        comapreBytes(response, exit2)
     ) {
       //buying WETH with USDC
