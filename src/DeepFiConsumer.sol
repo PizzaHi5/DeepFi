@@ -16,8 +16,7 @@ import {DeepVariables} from "./interfaces/DeepVariables.sol";
 contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, ConfirmedOwner, DeepVariables {
   using FunctionsRequest for FunctionsRequest.Request;
 
-  event StringCheck(string[] diditwork);
-  event Action(bool isBuying);
+  event Action(ISwapRouter.ExactInputSingleParams params);
 
   bytes32 public donId; // DON ID for the Functions DON to which the requests are sent
 
@@ -35,6 +34,7 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
   bytes private s_exit2;
 
   uint256 s_lastSwappedAmount;
+  ISwapRouter.ExactInputSingleParams public paramsToExecute;
 
   constructor(address router, bytes32 _donId, ISwapRouter _swapRouter) 
     FunctionsClient(router) ConfirmedOwner(msg.sender) DeepVariables(_swapRouter) {
@@ -109,13 +109,12 @@ contract DeepFiConsumer is FunctionsClient, AutomationCompatibleInterface, Confi
        comapreBytes(response, exit2)
     ) {
       //buying WETH with USDC
-      emit Action(true);
-      executeResponse(parseResponse(response, true));
+      paramsToExecute = parseResponse(response, true);
     } else {
       //selling WETH for USDC
-      emit Action(false);
-      executeResponse(parseResponse(response, false));
+      paramsToExecute = parseResponse(response, false);
     }
+    emit Action(paramsToExecute);
   }
 
   function comapreBytes(bytes memory a, bytes memory b) public pure returns (bool) {

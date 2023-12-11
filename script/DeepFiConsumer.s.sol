@@ -30,8 +30,6 @@ contract DeepFiConsumerScript is Script {
         address usdc = 0x9999f7Fea5938fD3b1E26A12c3f2fb024e194f97;
         address weth = 0xA6FA4fB5f76172d178d61B04b0ecd319C5d1C0aa;
 
-        //address subscriptionAddress = 
-
         vm.startBroadcast(deployerPrivKey);
 
         DeepFiConsumer consumer = new DeepFiConsumer(fxnsRouter, donId, ISwapRouter(swapRouter));
